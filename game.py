@@ -8,7 +8,7 @@ ADJUSTED_WINDOW_HEIGHT = WINDOW_HEIGHT + 200
 BLOCK_SIZE = 64 
 SCREEN_BLOCK_WIDTH = WINDOW_WIDTH/BLOCK_SIZE
 SCREEN_BLOCK_HEIGHT = WINDOW_HEIGHT/BLOCK_SIZE
-WINDOW_SIZE = WINDOW_WIDTH, ADJUSTED_WINDOW_HEIGHT
+WINDOW_SIZE = WINDOW_WIDTH, WINDOW_HEIGHT 
 HALF_WIDTH = int(WINDOW_WIDTH/2)
 HALF_HEIGHT= int(WINDOW_HEIGHT/2)
 
@@ -30,7 +30,10 @@ class Player(Entity):
         self.dx = 0
         self.dy = 0
         self.grounded = False
-        self.image = pygame.image.load('sprites/trump.png').convert_alpha()
+        #self.image = pygame.image.load('sprites/trump.png').convert_alpha()
+        self.image = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
+        self.image.convert()
+        self.image.fill(Color("#0000ff"))
         self.rect = Rect(x,y,BLOCK_SIZE, BLOCK_SIZE)
         self.position = 0
     
@@ -76,7 +79,8 @@ class Player(Entity):
             if pygame.sprite.collide_rect(self,p):
                 if isinstance(p, EndPlatform):
                     self.position += 1000
-                    pygame.event.post(pygame.event.Event(QUIT))
+                    #pygame.event.post(pygame.event.Event(QUIT))
+                    self.alive = False 
                 if dx > 0:
                     self.rect.right = p.rect.left
                 elif dx < 0:
@@ -92,13 +96,17 @@ class Player(Entity):
 class Hillary(Entity):
     def __init__(self,x,y):
         Entity.__init__(self)
+        '''
         enemyPicture = random.randint(1,2)
         if enemyPicture == 1:
             self.image = pygame.image.load('sprites/hillary.png').convert_alpha()
         
         else:
-            self.image = pygame.image.load('sprites/mueller.png').convert_alpha()
-
+            self.image = pygame.image.load('sprites/mueller.png').convert_alpha()'''
+        
+        self.image = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
+        self.image.convert()
+        self.image.fill(Color("#00ff00"))
         self.rect = Rect(x,y,BLOCK_SIZE, BLOCK_SIZE)
         self.dx = -1
         self.dy = 3
@@ -134,7 +142,10 @@ class Platform(Entity):
 class EndPlatform(Platform):
     def __init__(self,x,y):
         Platform.__init__(self, x, y)
-        self.image = pygame.image.load('sprites/putin.png').convert_alpha()
+        #self.image = pygame.image.load('sprites/putin.png').convert_alpha()
+        self.image = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
+        self.image.convert()
+        self.image.fill(Color("#ff00ff"))
 
 class Camera(object):
     def __init__(self, camera_func, level_width, level_height):
@@ -212,7 +223,6 @@ class Level():
 class Game():
     def __init__(self):
         pygame.init()
-        self.mode = 0
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         self.myfont = pygame.font.SysFont("Courier New", 30)
         self.trump = Player(initialPositionX, initialPositionY)
@@ -230,6 +240,9 @@ class Game():
         self.generation = 0
         self.numSpecies = 0
         self.maxFitness = 0
+        self.population = 0
+        
+        self.neuronPositions = {}
 
     def playGame(self):
         while(1):
@@ -316,13 +329,15 @@ class Game():
         #labels
         if ui:
             positionLabel = self.myfont.render('Position: ' + str(self.trump.position), 1, (255,255,255))
-            self.screen.blit(positionLabel, (100, 800))
+            self.screen.blit(positionLabel, (600, 100))
             maxFitnessLabel = self.myfont.render('Max Fitness ' + str(self.maxFitness), 1, (255,255,255))
-            self.screen.blit(maxFitnessLabel, (100, 830))
+            self.screen.blit(maxFitnessLabel, (600, 130))
             generationLabel = self.myfont.render('Generation ' + str(self.generation), 1, (255,255,255))
-            self.screen.blit(generationLabel, (100, 850))
+            self.screen.blit(generationLabel, (600, 160))
             numSpeciesLabel = self.myfont.render('# Species ' + str(self.numSpecies), 1, (255,255,255))
-            self.screen.blit(numSpeciesLabel, (100, 870))
+            self.screen.blit(numSpeciesLabel, (600, 190))
+            populationLabel = self.myfont.render('Population: ' + str(self.population), 1, (255,255,255))
+            self.screen.blit(populationLabel, (600,220))
 
         inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
         self.drawInputGrid(inputs)
@@ -339,11 +354,14 @@ class Game():
         
         leftBlockPosition = trumpBlockPositionX - 5 
         topBlockPosition = trumpBlockPositionY - 5 
+        realpadding = 0 - topBlockPosition 
         padding = 0
         for row in range(topBlockPosition, topBlockPosition + 12):
-            if row > self.lvl_block_height - 1 or row < 0:
+            if row < 0:
                 inputs.extend([0] * 12)
                 padding +=  1
+            elif row > self.lvl_block_height - 1:
+                inputs.extend([0] * 12)
             
             else:
 
@@ -361,35 +379,19 @@ class Game():
         #get hillary positions
         for hillary in self.level.hillaries:
             hillaryBlockX = int(hillary.rect.x/self.pixel_lvl_width * self.lvl_block_width) 
-            hillaryBlockY = int(hillary.rect.y/self.pixel_lvl_height * self.lvl_block_height) - padding
-            if hillaryBlockX >= leftBlockPosition and hillaryBlockX < leftBlockPosition + 12 and hillaryBlockY >= topBlockPosition and hillaryBlockY < hillaryBlockY + 12: 
+            hillaryBlockY = int(hillary.rect.y/self.pixel_lvl_height * self.lvl_block_height) + realpadding
+            if hillaryBlockX >= leftBlockPosition and hillaryBlockX < leftBlockPosition + 12 and hillaryBlockY >= topBlockPosition and hillaryBlockY < topBlockPosition + 12: 
                 #hillary on screen...
                 inputs[hillaryBlockY*12+hillaryBlockX-leftBlockPosition] = -1
         
         return inputs
 
-    def drawInputs(self,inputs):
-        y = 800
-        for i in range(inputs):
-            row = self.levelArray[i]
-            x = 30
-            for space in range(len(row)):
-                square = pygame.Surface((4, 4))
-                if space == 1:
-                    square.fill(Color('#ffffff'))
-                    self.screen.blit(square, (x, y))
-                elif space == -1:
-                    square.fill(Color('#00ff00'))
-                    self.screen.blit(square, (x, y))
-                x += 4
-            y += 4
-        
-    def drawInputGrid(self,inputs):
-        y = 800
-        x = 30
+    def drawInputGrid(self,inputs, network=None):
+        y = 100 
+        x = 130 
         for i in range(len(inputs)):
             space = inputs[i]
-            square = pygame.Surface((5,5))
+            square = pygame.Surface((8,8))
             if space == 1: 
                 square.fill(Color('#ffffff'))
                 self.screen.blit(square, (x, y))
@@ -397,16 +399,34 @@ class Game():
                 square.fill(Color('#00ff00'))
                 self.screen.blit(square, (x, y))
 
-            x += 5
+            self.neuronPositions[i] = (x, y)
+            x += 9 
         
             if i % 12 == 11:
-                y += 5
-                x = 30
+                y += 9 
+                x = 130
 
-    def updateUI(self, generation, numSpecies, maxFitness):
+        '''for num, neuron in network.neurons.items():
+            if num > len(inputs) and num < 1000000:
+                #non output
+                x = random.randint(140, 240)
+                y = random.randint(100, 200)
+                self.neuronPositions[num] = (x,y)
+        
+            elif num >= 1000000: 
+                x = 260
+                y = num - 1000000 + 100
+                self.neuronPositions[num] = (x,y)'''
+        
+
+
+                
+
+    def updateUI(self, generation, numSpecies, maxFitness, population):
         self.generation = generation
         self.numSpecies = numSpecies
         self.maxFitness = maxFitness
+        self.population = population
 
 if __name__ == '__main__':
     game = Game()

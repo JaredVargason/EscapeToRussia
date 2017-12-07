@@ -4,6 +4,7 @@ import random
 import copy
 from game import Game
 import pygame
+from sys import argv
 
 Buttons = ['R', 'L', 'Space']
 
@@ -145,6 +146,7 @@ class Pool():
             self.species.append(childSpecies)
     
     def newGeneration(self):
+        self.writeFile('gen' + str(self.generation) + '.txt')
         self.cullSpecies(False)
         self.rankGlobally()
         self.removeStaleSpecies()
@@ -153,6 +155,7 @@ class Pool():
             species.calculateAverageFitness()
         self.removeWeakSpecies()
         self.genesThisGeneration = {}
+        Pool.innovation = 1
 
         total = self.totalAverageFitness()
         children = []
@@ -168,7 +171,7 @@ class Pool():
             self.addToSpecies(child)
         
         self.generation += 1
-        print('Welcome to generation ' + str(self.generation) + '!')
+        print('Entering generation ' + str(self.generation) + '...')
 
     def savePool(self):
         filename = "trump" + self.generation
@@ -183,7 +186,7 @@ class Pool():
         for n, species in enumerate(self.species):
             wFile.write(str(species.topFitness) + '\n')
             wFile.write(str(species.staleness) + '\n')
-            wFile.write(str(len(species.genomes)))
+            wFile.write(str(len(species.genomes)) + '\n')
             for m, genome in enumerate(species.genomes):
                 wFile.write(str(genome.fitness) + '\n')
                 wFile.write(str(genome.maxneuron) + '\n')
@@ -192,20 +195,56 @@ class Pool():
                     wFile.write(str(rate) + '\n')
                 wFile.write('done\n')
 
-                wFile.write(len(genome.genes))
+                wFile.write(str(len(genome.genes)) + '\n')
                 for l,gene in enumerate(genome.genes):
-                    wFile.write(gene.into + ' ')
-                    wFile.write(gene.out + ' ')
-                    wFile.write(gene.weight + ' ')
-                    wFile.write(gene.innovation + ' ')
+                    wFile.write(str(gene.into) + '\n')
+                    wFile.write(str(gene.out) + '\n')
+                    wFile.write(str(gene.weight) + '\n')
+                    wFile.write(str(gene.innovation) + '\n')
                     if gene.enabled:
                         wFile.write('1\n')
                     else:
                         wFile.write('0\n')
         
         wFile.close()
-
-                
+    
+    @staticmethod
+    def loadFile(filename):
+        pool = Pool()
+        with open(filename, 'r') as f:
+            pool.generation = int(f.readline().rstrip())
+            pool.maxFitness = float(f.readline().rstrip())
+            numSpecies = int(f.readline().rstrip())
+            for s in range(numSpecies):
+                species = Species()
+                pool.species.append(species)
+                species.topFitness = float(f.readline().rstrip())
+                species.staleness = int(f.readline().rstrip())
+                numGenomes = int(f.readline().rstrip())
+                for g in range(numGenomes):
+                    genome = Genome()
+                    species.genomes.append(genome)
+                    genome.fitness = float(f.readline().rstrip())
+                    genome.maxneuron = int(f.readline().rstrip())
+                    line = f.readline().rstrip()
+                    while line != "done":
+                        genome.mutationRates[line] = float(f.readline().rstrip())
+                        line = f.readline().rstrip()
+                    numGenes = int(f.readline().rstrip())
+                    for n in range(numGenes):
+                        gene = Gene() 
+                        genome.genes.append(gene)
+                        gene.into = int(f.readline().rstrip())
+                        gene.out = int(f.readline().rstrip())
+                        gene.weight = float(f.readline().rstrip())
+                        gene.innovation = int(f.readline().rstrip())
+                        enabled = f.readline().rstrip()
+                        if enabled == "1":
+                            gene.enabled = True
+                        else:
+                            gene.enabled = False
+        
+        return pool
         
 class Species():
     def __init__(self):
@@ -223,14 +262,19 @@ class Species():
         self.averageFitness = total / len(self.genomes)
     
     def breedChild(self):
+        child = None
         if random.random() < CrossoverChance:
             g1 = self.genomes[random.randrange(0, len(self.genomes))]
             g2 = self.genomes[random.randrange(0, len(self.genomes))]
-            return Genome.crossover(g1, g2)
+            child = Genome.crossover(g1, g2)
         
         else:
             g = self.genomes[random.randrange(0, len(self.genomes))]
-            return copy.copy(g)
+            child = copy.copy(g)
+        
+        child.mutate()
+
+        return child
         
             
 class Gene():
@@ -492,7 +536,7 @@ class Genome():
                 child.genes.append(copy.copy(gene1)) 
 
         child.maxneuron = max(g1.maxneuron, g2.maxneuron)
-        for mutation, rate in enumerate(g1.mutationRates):
+        for mutation, rate in g1.mutationRates.items():
             child.mutationRates[mutation] = rate
 
         return child
@@ -534,16 +578,19 @@ class Genome():
                 coincident = coincident + 1
 
         if coincident == 0:
-            return 0
+            return 0 
 
         return total / coincident
 
     @staticmethod
     def sameSpecies(genome1, genome2):
         dd = DeltaDisjoint*Genome.disjoint(genome1, genome2)
-        weights = Genome.weights(genome1, genome2)
-        dw = DeltaWeights*weights
-        return dd + dw < DeltaThreshold
+        dw = DeltaWeights * Genome.weights(genome1, genome2)
+        if dw > 0:
+            return dd + dw < DeltaThreshold
+
+        else:
+            return dd + dw < (DeltaThreshold - 0.5)
 
     
 
@@ -559,9 +606,14 @@ class Learn():
             self.pool = Pool()
             self.game = Game()
             self.controller = {'R': False, 'L': False, 'Space': False}
-            for i in range(0, 20):
+            for i in range(0, Population):
                 basic = Genome.basicGenome()
                 self.pool.addToSpecies(basic)
+        
+        else:
+            self.pool = pool
+            self.game = Game()
+            self.controller = {'R': False, 'L': False, 'Space': False}
 
     def initializeRun(self):
         self.game.setupGame()
@@ -588,7 +640,7 @@ class Learn():
             species = self.pool.species[self.pool.currentSpecies]
             genome = species.genomes[self.pool.currentGenome]
             self.initializeRun()
-            self.game.updateUI(self.pool.generation, len(self.pool.species), self.pool.maxFitness)
+            self.game.updateUI(self.pool.generation, len(self.pool.species), self.pool.maxFitness, Population)
             runMaxFitness = -100
             while self.game.trump.alive:
                 if self.pool.currentFrame % 5 == 0: 
@@ -622,5 +674,21 @@ class Learn():
                 self.pool.nextGenome() 
 
 if __name__ == '__main__':
-    learn = Learn()
-    learn.learnTrumpJump()
+    if len(argv) == 2: 
+        pool = Pool.loadFile(argv[1])
+        learn = Learn(pool)
+        learn.learnTrumpJump()
+
+    elif len(argv) == 3:
+        pool = Pool.loadFile(argv[1])
+        pool.rankGlobally()
+        for species in pool.species:
+            for genome in species.genomes:
+                genome.fitness = 0
+        learn = Learn(pool)
+        learn.learnTrumpJump()
+
+    else:
+        learn = Learn()
+        learn.learnTrumpJump()
+    
