@@ -1,6 +1,6 @@
 # NEATPlatformer
 
-This application is a platformer based on Kenneth O' Stanley's paper, found [http://nn.cs.utexas.edu/downloads/papers/stanley.ec02.pdf](here), and is based off Seth Bling's implementation with changes as necessary found [https://www.youtube.com/watch?v=qv6UVOQ0F44](here).
+This application is a platformer based on Kenneth O' Stanley's paper, found [here](http://nn.cs.utexas.edu/downloads/papers/stanley.ec02.pdf), and is based off Seth Bling's implementation with changes as necessary found [here](https://www.youtube.com/watch?v=qv6UVOQ0F44).
 
 Dependencies-
 Python3, pygame
