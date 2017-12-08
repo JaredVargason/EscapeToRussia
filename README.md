@@ -1,6 +1,6 @@
-# EscapeToRussia
-Taking place after President Donald Trump has been convicted of collusion with the Russian government, Escape to Russia illustrates Don's journey.
-This README is under construction while I finish polishing the project.
+# NEATPlatformer
+
+This application is a platformer based on Kenneth O' Stanley's paper, found [http://nn.cs.utexas.edu/downloads/papers/stanley.ec02.pdf](here), and is based off Seth Bling's implementation with changes as necessary found [https://www.youtube.com/watch?v=qv6UVOQ0F44](here).
 
 Dependencies-
 Python3, pygame
