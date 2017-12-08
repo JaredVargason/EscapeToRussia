@@ -146,7 +146,7 @@ class Pool():
             self.species.append(childSpecies)
     
     def newGeneration(self):
-        self.writeFile('gen' + str(self.generation) + '.txt')
+        self.writeFile('v2gen' + str(self.generation) + '.txt')
         self.cullSpecies(False)
         self.rankGlobally()
         self.removeStaleSpecies()
@@ -659,6 +659,8 @@ class Learn():
                 self.pool.currentFrame += 1
                 
                 self.game.advance_frame_learn(self.controller)
+            
+            self.game.cleanupGame()
 
             fitness = self.game.trump.position - self.pool.currentFrame / 2
             if fitness == 0:
@@ -680,13 +682,25 @@ if __name__ == '__main__':
         learn.learnTrumpJump()
 
     elif len(argv) == 3:
-        pool = Pool.loadFile(argv[1])
-        pool.rankGlobally()
-        for species in pool.species:
-            for genome in species.genomes:
-                genome.fitness = 0
-        learn = Learn(pool)
-        learn.learnTrumpJump()
+        if argv[2] == "top": 
+            pool = Pool.loadFile(argv[1])
+            maxFitness = maxs = maxg = 0
+
+            for s, species in enumerate(pool.species):
+                for g, genome in enumerate(species.genomes):
+                    if genome.fitness > maxFitness:
+                        maxs = s
+                        maxg = g
+                        maxFitness = genome.fitness
+            
+            pool.currentSpecies = maxs
+            pool.currentGenome = maxg
+            learn = Learn(pool)
+            learn.learnTrumpJump()
+
+        else:
+            print("Unknown argument " + argv[2] + "; Need argument 'top' for playback of top species")
+
 
     else:
         learn = Learn()

@@ -304,13 +304,19 @@ class Game():
         for e in self.level.entities:
             self.screen.blit(e.image, self.camera.apply(e))
         
-        label = self.myfont.render('Position: ' + str(self.trump.position), 1, (255,255,255))
-        self.screen.blit(label, (100, 800))
+        #label = self.myfont.render('Position: ' + str(self.trump.position), 1, (255,255,255))
+        #self.screen.blit(label, (100, 800))
         inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
-        self.drawInputGrid(inputs)
+        #self.drawInputGrid(inputs)
         pygame.display.flip()
 
     def advance_frame_learn(self, controller, ui=True):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: 
+                sys.exit()
+            else:
+                pass
+
         self.clock.tick(60)
         self.camera.update(self.trump)
         left = controller['L']
@@ -339,8 +345,9 @@ class Game():
             populationLabel = self.myfont.render('Population: ' + str(self.population), 1, (255,255,255))
             self.screen.blit(populationLabel, (600,220))
 
-        inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
-        self.drawInputGrid(inputs)
+            inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
+            self.drawInputGrid(inputs)
+
         pygame.display.flip()
                 
     def getTrumpBlockPositionX(self):
