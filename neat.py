@@ -601,10 +601,11 @@ class Neuron():
 
 class Learn():
 
-    def __init__(self, pool=None):
+    def __init__(self, pool=None, filename="level.txt"):
         if pool == None:
+            self.filename = filename
             self.pool = Pool()
-            self.game = Game()
+            self.game = Game(self.filename)
             self.controller = {'R': False, 'L': False, 'Space': False}
             for i in range(0, Population):
                 basic = Genome.basicGenome()
@@ -612,7 +613,7 @@ class Learn():
         
         else:
             self.pool = pool
-            self.game = Game()
+            self.game = Game(filename)
             self.controller = {'R': False, 'L': False, 'Space': False}
 
     def initializeRun(self):
@@ -658,7 +659,7 @@ class Learn():
 
                 self.pool.currentFrame += 1
                 
-                self.game.advance_frame_learn(self.controller)
+                self.game.advance_frame_learn(self.controller, True, genome.network)
             
             self.game.cleanupGame()
 
@@ -676,12 +677,12 @@ class Learn():
                 self.pool.nextGenome() 
 
 if __name__ == '__main__':
-    if len(argv) == 2: 
+    if len(argv) == 3: 
         pool = Pool.loadFile(argv[1])
-        learn = Learn(pool)
+        learn = Learn(pool,argv[2])
         learn.learnTrumpJump()
 
-    elif len(argv) == 3:
+    elif len(argv) == 4:
         if argv[2] == "top": 
             pool = Pool.loadFile(argv[1])
             maxFitness = maxs = maxg = 0
@@ -695,14 +696,17 @@ if __name__ == '__main__':
             
             pool.currentSpecies = maxs
             pool.currentGenome = maxg
-            learn = Learn(pool)
+            learn = Learn(pool, argv[3])
             learn.learnTrumpJump()
 
         else:
             print("Unknown argument " + argv[2] + "; Need argument 'top' for playback of top species")
 
 
-    else:
-        learn = Learn()
+    elif len(argv) == 2:
+        learn = Learn(pool=None, filename=argv[1])
         learn.learnTrumpJump()
+
+    else:
+        sys.exit(0)
     

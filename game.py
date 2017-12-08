@@ -221,13 +221,13 @@ class Level():
         self.hillaries = []
 
 class Game():
-    def __init__(self):
+    def __init__(self, filename):
         pygame.init()
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         self.myfont = pygame.font.SysFont("Courier New", 30)
         self.trump = Player(initialPositionX, initialPositionY)
 
-        self.levelArray = readLevel('level.txt') 
+        self.levelArray = readLevel(filename) 
         self.level = None
         self.clock=pygame.time.Clock()
         
@@ -310,7 +310,7 @@ class Game():
         #self.drawInputGrid(inputs)
         pygame.display.flip()
 
-    def advance_frame_learn(self, controller, ui=True):
+    def advance_frame_learn(self, controller, ui=True, network=None):
         for event in pygame.event.get():
             if event.type == pygame.QUIT: 
                 sys.exit()
@@ -346,7 +346,7 @@ class Game():
             self.screen.blit(populationLabel, (600,220))
 
             inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
-            self.drawInputGrid(inputs)
+            self.drawInputGrid(inputs, network)
 
         pygame.display.flip()
                 
@@ -373,10 +373,9 @@ class Game():
             else:
 
                 for i in range(leftBlockPosition, leftBlockPosition + 12): 
-                    if i > self.lvl_block_width - 1 or i < 0:
+                    if i >= self.lvl_block_width - 1 or i < 0:
                         inputs.append(0)
                         continue
-
                     
                     if (self.levelArray[row][i] == 'W'):
                         inputs.append(1) 
@@ -412,19 +411,34 @@ class Game():
             if i % 12 == 11:
                 y += 9 
                 x = 130
+        '''
+        if network != None:
+            for num, neuron in network['neurons'].items():
+                square = pygame.Surface((8,8))
+                if num > len(inputs) and num < 1000000:
+                    #non output
+                    square.fill(Color('#eeeeee'))
+                    x = random.randint(140, 240)
+                    y = random.randint(100, 200)
+                    self.neuronPositions[num] = (x,y)
+                    self.screen.blit(square, (x,y))
+                    
+                elif num >= 1000000: #output 
+                    square.fill(Color('#cccccc'))
+                    x = 260
+                    y = num - 1000000 + 100
+                    self.neuronPositions[num] = (x,y)
+                    self.screen.blit(square,(x,y))
+            
+            for num, neuron in network['neurons'].items():
+                for incoming in neuron.incoming:
+                    prevPos = self.neuronPositions[incoming]
+                    incPos = self.neuronPositions[num]
+                    pygame.draw.line(self.screen, Color('#888888'), prevPos, incPos)
+        '''
 
-        '''for num, neuron in network.neurons.items():
-            if num > len(inputs) and num < 1000000:
-                #non output
-                x = random.randint(140, 240)
-                y = random.randint(100, 200)
-                self.neuronPositions[num] = (x,y)
-        
-            elif num >= 1000000: 
-                x = 260
-                y = num - 1000000 + 100
-                self.neuronPositions[num] = (x,y)'''
-        
+                
+                
 
 
                 
@@ -436,5 +450,10 @@ class Game():
         self.population = population
 
 if __name__ == '__main__':
-    game = Game()
+    if len(sys.argv) == 2:
+        game = Game(sys.argv[1])
+
+    else:
+        game = Game('level.txt')
+
     game.playGame()
