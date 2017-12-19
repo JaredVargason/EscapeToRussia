@@ -4,9 +4,10 @@ import random
 import copy
 from game import Game
 import pygame
+from os import path
 from sys import argv
 
-Buttons = ['R', 'L', 'Space']
+Buttons = ['Left', 'Right', 'Space']
 
 Inputs = 12*12+1 #numboxes
 Outputs = len(Buttons)
@@ -36,8 +37,8 @@ def sigmoid(x):
 class Pool():
     innovation = Outputs
     genesThisGeneration = {} 
-    def __init__(self):
-        self.timeout = TimeoutConstant
+    def __init__(self, outputFolder='/output'):
+        self.outputFolder = outputFolder
         self.innovation = 0
         self.species = []
         self.generation = 0
@@ -47,6 +48,7 @@ class Pool():
         self.currentFrame = 0
         self.maxFitness = 0
     
+        
     def newInnovation():
         Pool.innovation += 1
         return Pool.innovation
@@ -59,13 +61,7 @@ class Pool():
             if self.currentSpecies >= len(self.species):
                 self.newGeneration()
                 self.currentSpecies = 0 
-
-    def fitnessAlreadyMeasured(self):
-        species = self.species[self.currentSpecies]
-        genome = species.genomes[self.currentGenome]
-
-        return genome.fitness != 0
-
+        
     def rankGlobally(self):
         ranking = []
         for species in self.species:
@@ -146,7 +142,7 @@ class Pool():
             self.species.append(childSpecies)
     
     def newGeneration(self):
-        self.writeFile('v2gen' + str(self.generation) + '.txt')
+        self.writeFile(path.join(self.outputFolder, 'gen' + str(self.generation) + '.txt'))
         self.cullSpecies(False)
         self.rankGlobally()
         self.removeStaleSpecies()
@@ -209,8 +205,9 @@ class Pool():
         wFile.close()
     
     @staticmethod
-    def loadFile(filename):
+    def loadFile(filename, outputFolder):
         pool = Pool()
+        pool.outputFolder = outputFolder
         with open(filename, 'r') as f:
             pool.generation = int(f.readline().rstrip())
             pool.maxFitness = float(f.readline().rstrip())
@@ -294,6 +291,7 @@ class Genome():
         self.maxneuron = 0
         self.globalRank = 0
         self.mutationRates = {}
+        self.timeout = TimeoutConstant
         self.mutationRates['connections'] = MutateConnectionsChance
         self.mutationRates['link'] = LinkMutationChance
         self.mutationRates['bias'] = BiasMutationChance
@@ -592,6 +590,9 @@ class Genome():
         else:
             return dd + dw < (DeltaThreshold - 0.5)
 
+
+    def fitnessAlreadyMeasured(self):
+        return self.fitness != 0
     
 
 class Neuron():
@@ -600,113 +601,104 @@ class Neuron():
         self.value = 0.0
 
 class Learn():
+    def __init__(self, args):
+        if args['-i'] != '':
+            self.pool = Pool.loadFile(args['-i'], args['-o'])
+        else: 
+            self.pool = Pool(args['-o']) 
 
-    def __init__(self, pool=None, filename="level.txt"):
-        if pool == None:
-            self.filename = filename
-            self.pool = Pool()
-            self.game = Game(self.filename)
-            self.controller = {'R': False, 'L': False, 'Space': False}
-            for i in range(0, Population):
-                basic = Genome.basicGenome()
-                self.pool.addToSpecies(basic)
-        
-        else:
-            self.pool = pool
-            self.game = Game(filename)
-            self.controller = {'R': False, 'L': False, 'Space': False}
+        self.game = Game(args['-l'], int(args['-n']))
+        self.n = int(args['-n'])
+        self.ctlrs = []
 
-    def initializeRun(self):
-        self.game.setupGame()
-        self.pool.currentFrame = 0
-        species = self.pool.species[self.pool.currentSpecies]
-        species.genomes[self.pool.currentGenome].generateNetwork()
-        self.pool.timeout = TimeoutConstant
+        for i in range(0, Population):
+            basic = Genome.basicGenome()
+            self.pool.addToSpecies(basic)
 
-    def evaluateCurrent(self):
-        species = self.pool.species[self.pool.currentSpecies]
-        genome = species.genomes[self.pool.currentGenome]
-
-        inputs = self.game.getInputs(self.game.getTrumpBlockPositionX(), self.game.getTrumpBlockPositionY())
+    def evaluateCurrent(self, index, genome):
+        inputs = self.game.getInputs(self.game.getPlayerBlockPosition(index))
         inputs.append(1)
         controller = genome.evaluateNetwork(inputs)
-
-        if (controller['R'] and controller['L']):
-            controller['L'] = controller['R'] = False
         
         return controller
     
-    def learnTrumpJump(self):
-        while True:
-            species = self.pool.species[self.pool.currentSpecies]
-            genome = species.genomes[self.pool.currentGenome]
-            self.initializeRun()
-            self.game.updateUI(self.pool.generation, len(self.pool.species), self.pool.maxFitness, Population)
-            runMaxFitness = -100
-            while self.game.trump.alive:
-                if self.pool.currentFrame % 5 == 0: 
-                    self.controller = self.evaluateCurrent()
-
-                self.pool.timeout -= 1 
-
-                if self.game.trump.position > runMaxFitness:
-                    runMaxFitness = self.game.trump.position 
-                    self.pool.timeout = TimeoutConstant
-
-                timeoutBonus = self.pool.currentFrame / 4
-                if self.pool.timeout + timeoutBonus <= 0:
-                    break
-
-                self.pool.currentFrame += 1
+    def learnGame(self):
+        while True:     
+            genomes = self.iterate() #create iterator
+            generationFinished = False
+            while not generationFinished:
+                trainees = []
                 
-                self.game.advance_frame_learn(self.controller, True, genome.network)
+                while len(trainees) < self.n:
+                    try:
+                        genome = next(genomes)
+                        if not genome.fitnessAlreadyMeasured():
+                            genome.fitness = -100
+                            genome.timeout = TimeoutConstant
+                            genome.generateNetwork()
+                            trainees.append(genome)
+                        
+                    except StopIteration:
+                        generationFinished = True
+                        break
+                
+                self.game.level.createLevel(len(trainees))
+                self.pool.currentFrame = 0
             
-            self.game.cleanupGame()
+                while not self.game.level.allPlayersDead():
+                    if self.pool.currentFrame % 5 == 0:
+                        self.ctlrs = []
+                        for index, trainee in enumerate(trainees):
+                            self.ctlrs.append(self.evaluateCurrent(index, trainee))
+                    
+                    timeoutBonus = self.pool.currentFrame / 4
+                        
+                    for i, trainee in enumerate(trainees):
+                        trainee.timeout -= 1
+                        player = self.game.level.players[i]
+                        if player.position > trainee.fitness:
+                            trainee.fitness = player.position 
+                            trainee.timeout = TimeoutConstant
 
-            fitness = self.game.trump.position - self.pool.currentFrame / 2
-            if fitness == 0:
-                fitness = -1
-            
-            genome.fitness = fitness
-            if fitness > self.pool.maxFitness:
-                self.pool.maxFitness = fitness
+                        if trainee.timeout + timeoutBonus <= 0:
+                            player.alive = False
+                    
+                    self.pool.currentFrame += 1
+                    self.game.advance_frame(self.ctlrs, False)
+                            
+                for i, trainee in enumerate(trainees):
+                    if self.game.level.players[i].position == 0:
+                        trainee.fitness = -1
+                    else:
+                        trainee.fitness = trainee.fitness - (self.game.level.players[i].framesAlive / 2)
+                    
+                    if trainee.fitness > self.pool.maxFitness:
+                        self.pool.maxFitness = trainee.fitness
 
-            self.pool.currentSpecies = 0
-            self.pool.currentGenome = 0
-            while self.pool.fitnessAlreadyMeasured():
-                self.pool.nextGenome() 
+            self.pool.newGeneration()
+
+
+    def iterate(self):
+        genomes = []
+        for species in self.pool.species:
+            genomes += species.genomes
+
+        for genome in genomes:
+            yield genome
+
 
 if __name__ == '__main__':
-    if len(argv) == 3: 
-        pool = Pool.loadFile(argv[1])
-        learn = Learn(pool,argv[2])
-        learn.learnTrumpJump()
+    args = {
+        '-l' : 'level.txt',
+        '-i' : '',
+        '-o' : '/output', 
+        '-n' : 1
+        #top species functionality...
+    }
 
-    elif len(argv) == 4:
-        if argv[2] == "top": 
-            pool = Pool.loadFile(argv[1])
-            maxFitness = maxs = maxg = 0
+    for i, arg in enumerate(argv):
+        if arg in ['-l','-i','-o', '-n']:
+            args[arg] = argv[i+1]
 
-            for s, species in enumerate(pool.species):
-                for g, genome in enumerate(species.genomes):
-                    if genome.fitness > maxFitness:
-                        maxs = s
-                        maxg = g
-                        maxFitness = genome.fitness
-            
-            pool.currentSpecies = maxs
-            pool.currentGenome = maxg
-            learn = Learn(pool, argv[3])
-            learn.learnTrumpJump()
-
-        else:
-            print("Unknown argument " + argv[2] + "; Need argument 'top' for playback of top species")
-
-
-    elif len(argv) == 2:
-        learn = Learn(pool=None, filename=argv[1])
-        learn.learnTrumpJump()
-
-    else:
-        sys.exit(0)
-    
+    learn = Learn(args)
+    learn.learnGame()

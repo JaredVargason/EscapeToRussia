@@ -18,6 +18,15 @@ initialPositionY = 512
 speed = [5,3]
 black = 0, 0, 0
 
+def generateRandomColor():
+    colorChars = list('ABCDEF0123456789')
+    colorString = '#'
+    for i in range(6):
+        colorString += random.choice(colorChars)
+
+    return colorString
+
+
 class Entity(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
@@ -30,16 +39,20 @@ class Player(Entity):
         self.dx = 0
         self.dy = 0
         self.grounded = False
-        #self.image = pygame.image.load('sprites/trump.png').convert_alpha()
         self.image = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
         self.image.convert()
-        self.image.fill(Color("#0000ff"))
+        self.image.fill(Color(generateRandomColor()))
         self.rect = Rect(x,y,BLOCK_SIZE, BLOCK_SIZE)
         self.position = 0
+        self.framesAlive = 0
+        self.ctlr = {  'Left':False,
+                             'Right':False,
+                             'Space':False }
     
-    def update(self, left, right, space, platforms, hillaries):
+    def update(self, platforms, hillaries, controller):
+        self.ctlr = controller
         self.position = self.rect.x -initialPositionX
-        if ((left and right) or (not left and not right)):
+        if ((self.ctlr['Left'] and self.ctlr['Right']) or (not self.ctlr['Left'] and not self.ctlr['Right'])):
             if self.dx < 0.01 and self.dx > -0.01:
                 self.dx = 0 
 
@@ -49,15 +62,15 @@ class Player(Entity):
             elif self.dx < 0:
                 self.dx += 0.1
         
-        elif left:
+        elif self.ctlr['Left']:
             if self.dx > -2:
                 self.dx += -0.1
 
-        elif right:
+        elif self.ctlr['Right']:
             if self.dx < 2:
                 self.dx += 0.1
 
-        if space:
+        if self.ctlr['Space']:
             if self.grounded:
                 self.dy = -7
         
@@ -70,16 +83,15 @@ class Player(Entity):
         self.grounded = False
         self.collide(0, self.dy, platforms, hillaries)
 
-    def collide(self, dx, dy, platforms, hillaries):
-        for hillary in hillaries:
-            if pygame.sprite.collide_rect(self,hillary):
+    def collide(self, dx, dy, platforms, enemies):
+        for enemy in enemies:
+            if pygame.sprite.collide_rect(self,enemy):
                 self.alive = False
 
         for p in platforms:
             if pygame.sprite.collide_rect(self,p):
                 if isinstance(p, EndPlatform):
                     self.position += 1000
-                    #pygame.event.post(pygame.event.Event(QUIT))
                     self.alive = False 
                 if dx > 0:
                     self.rect.right = p.rect.left
@@ -92,18 +104,12 @@ class Player(Entity):
                     self.dy = 0
                 elif dy < 0:
                     self.rect.top = p.rect.bottom
+    
 
-class Hillary(Entity):
+class Enemy(Entity):
     def __init__(self,x,y):
         Entity.__init__(self)
-        '''
-        enemyPicture = random.randint(1,2)
-        if enemyPicture == 1:
-            self.image = pygame.image.load('sprites/hillary.png').convert_alpha()
-        
-        else:
-            self.image = pygame.image.load('sprites/mueller.png').convert_alpha()'''
-        
+
         self.image = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
         self.image.convert()
         self.image.fill(Color("#00ff00"))
@@ -142,7 +148,6 @@ class Platform(Entity):
 class EndPlatform(Platform):
     def __init__(self,x,y):
         Platform.__init__(self, x, y)
-        #self.image = pygame.image.load('sprites/putin.png').convert_alpha()
         self.image = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
         self.image.convert()
         self.image.fill(Color("#ff00ff"))
@@ -176,67 +181,85 @@ def simple_camera(camera, target_rect):
     _, _, w, h = camera      # w = width, h = height
     return Rect(-l+HALF_WIDTH, -t+HALF_HEIGHT, w, h)
 
-def createLevel(levelArray):
-    level = Level()
-    x = y = 0
-    for row in levelArray:
-        for char in row:
-            if char == 'W':
-                platform = Platform(x,y)
-                level.platforms.append(platform)
-                level.entities.add(platform)
-            elif char == 'P':
-                platform = EndPlatform(x,y)
-                level.platforms.append(platform)
-                level.entities.add(platform)
-            elif char == 'H':
-                hillary = Hillary(x,y)
-                level.hillaries.append(hillary)
-                level.entities.add(hillary)
-
-            x += BLOCK_SIZE
-        y += BLOCK_SIZE
-        x = 0 
-
-    return level
-
-def readLevel(filename):
-    lvlFile = open(filename, 'r')
-    x = y = 0
-    level = []
-    for line in lvlFile:
-        levelRow = []
-        for char in line:
-            levelRow.append(char)
-        level.append(levelRow)
-    
-    lvlFile.close()
-
-    return level
-
 class Level():
-    def __init__(self):
+    def __init__(self, levelname, n=1):
+        self.players = []
         self.platforms = []
         self.entities = pygame.sprite.Group() 
-        self.hillaries = []
+        self.enemies = []
+        self.n = n
+
+        self.levelArray = self.readLevelArray(levelname)
+        self.blockWidth = len(self.levelArray[0])
+        self.blockHeight = len(self.levelArray) 
+
+    def readLevelArray(self, filename):
+        with open(filename, 'r') as lvlFile:
+            lvlFile = open(filename, 'r')
+            x = y = 0
+            level = []
+            for line in lvlFile:
+                levelRow = []
+                for char in line:
+                    levelRow.append(char)
+                level.append(levelRow)
+            
+            return level
+
+    #rename to resetLevel?
+    def createLevel(self, n):
+        self.players = []
+        self.entities.empty()
+        self.platforms = []
+        self.enemies = []
+
+        x = y = 0
+        for row in self.levelArray:
+            for char in row:
+                if char == 'W':
+                    platform = Platform(x,y)
+                    self.platforms.append(platform)
+                    self.entities.add(platform)
+                elif char == 'P':
+                    platform = EndPlatform(x,y)
+                    self.platforms.append(platform)
+                    self.entities.add(platform)
+                elif char == 'H':
+                    enemy = Enemy(x,y)
+                    self.enemies.append(enemy)
+                    self.entities.add(enemy)
+                elif char == 'T':
+                    for i in range(n):
+                        player = Player(x,y)
+                        self.players.append(player)
+                        self.entities.add(player) 
+
+                x += BLOCK_SIZE
+            y += BLOCK_SIZE
+            x = 0 
+    
+    def allPlayersDead(self):
+        for player in self.players:
+            if player.alive:
+                return False
+        
+        return True
 
 class Game():
-    def __init__(self, filename):
+    def __init__(self, filename, n=1):
         pygame.init()
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         self.myfont = pygame.font.SysFont("Courier New", 30)
-        self.trump = Player(initialPositionX, initialPositionY)
+        self.n = n
 
-        self.levelArray = readLevel(filename) 
-        self.level = None
+        self.level = Level(filename, n)
         self.clock=pygame.time.Clock()
         
-        self.lvl_block_width = len(self.levelArray[0])
-        self.lvl_block_height = len(self.levelArray)
-        self.pixel_lvl_width = len(self.levelArray[0]) * BLOCK_SIZE
-        self.pixel_lvl_height = len(self.levelArray) * BLOCK_SIZE
+        self.pixel_lvl_width = len(self.level.levelArray[0]) * BLOCK_SIZE
+        self.pixel_lvl_height = len(self.level.levelArray) * BLOCK_SIZE
         self.camera = Camera(simple_camera, self.pixel_lvl_width, self.pixel_lvl_height)
 
+        #UI information
         self.generation = 0
         self.numSpecies = 0
         self.maxFitness = 0
@@ -246,95 +269,47 @@ class Game():
 
     def playGame(self):
         while(1):
-            self.setupGame()
-            while self.trump.alive:
+            self.level.createLevel(1)
+            while self.level.players[0].alive:
                 self.update()
-            self.cleanupGame()
             
-    def setupGame(self):
-        self.trump = Player(initialPositionX, initialPositionY)
-        self.level = createLevel(self.levelArray)
-        self.level.entities.add(self.trump)
-    
-    def cleanupGame(self):
-        self.level.entities.empty()
-        self.level = None 
-        
-        
     def update(self):
-        controller = {'R':False, 'L':False, 'Space':False}
+        controller = {'Right':False, 'Left':False, 'Space':False}
 
         keys = pygame.key.get_pressed()
             
-        controller['L'] = keys[pygame.K_LEFT] 
-        controller['R'] = keys[pygame.K_RIGHT] 
+        controller['Left'] = keys[pygame.K_LEFT] 
+        controller['Right'] = keys[pygame.K_RIGHT] 
         controller['Space'] = keys[pygame.K_SPACE] 
 
+        self.advance_frame(ctlrs=[controller])
+    
+    def advance_frame(self, ctlrs=[], ui=True, network=None):
+        self.clock.tick(60)
         for event in pygame.event.get():
             if event.type == pygame.QUIT: 
                 sys.exit()
-            elif event.type == MOUSEBUTTONUP:
-                None 
             else:
                 None
-        
-        self.advance_frame(controller)
 
-    
-    def advance_frame(self, controller):
-        self.clock.tick(60)
-        left = right = space = False
+        self.camera.update(self.getBestAlivePlayer()[1])
+        for i, player in enumerate(self.level.players):
+            if player.alive:
+                player.update(self.level.platforms, self.level.enemies, ctlrs[i])
+                player.framesAlive += 1
 
-        if controller['R']:
-            right = True
-
-        if controller['L']:
-            left = True
-        
-        if controller['Space']:
-            space = True
-
-        self.camera.update(self.trump)
-        self.trump.update(left, right, space, self.level.platforms, self.level.hillaries)
         self.screen.fill(black)
 
-        for hillary in self.level.hillaries:
-            hillary.update(self.level.platforms)
+        for enemy in self.level.enemies:
+            enemy.update(self.level.platforms)
             
         for e in self.level.entities:
             self.screen.blit(e.image, self.camera.apply(e))
-        
-        #label = self.myfont.render('Position: ' + str(self.trump.position), 1, (255,255,255))
-        #self.screen.blit(label, (100, 800))
-        inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
-        #self.drawInputGrid(inputs)
-        pygame.display.flip()
-
-    def advance_frame_learn(self, controller, ui=True, network=None):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: 
-                sys.exit()
-            else:
-                pass
-
-        self.clock.tick(60)
-        self.camera.update(self.trump)
-        left = controller['L']
-        right = controller['R']
-        space = controller['Space']
-        self.trump.update(left, right, space, self.level.platforms, self.level.hillaries)
-        self.screen.fill(black)
-
-        for hillary in self.level.hillaries:
-            hillary.update(self.level.platforms)
-            
-        for e in self.level.entities:
-            self.screen.blit(e.image, self.camera.apply(e))
-
         
         #labels
         if ui:
-            positionLabel = self.myfont.render('Position: ' + str(self.trump.position), 1, (255,255,255))
+            player = self.getBestAlivePlayer()[1]
+            positionLabel = self.myfont.render('Position: ' + str(player.position), 1, (255,255,255))
             self.screen.blit(positionLabel, (600, 100))
             maxFitnessLabel = self.myfont.render('Max Fitness ' + str(self.maxFitness), 1, (255,255,255))
             self.screen.blit(maxFitnessLabel, (600, 130))
@@ -345,50 +320,61 @@ class Game():
             populationLabel = self.myfont.render('Population: ' + str(self.population), 1, (255,255,255))
             self.screen.blit(populationLabel, (600,220))
 
-            inputs = self.getInputs(self.getTrumpBlockPositionX(), self.getTrumpBlockPositionY())
+            inputs = self.getInputs(self.getPlayerBlockPosition(0))
             self.drawInputGrid(inputs, network)
 
         pygame.display.flip()
                 
-    def getTrumpBlockPositionX(self):
-        return int(self.trump.rect.x/self.pixel_lvl_width * self.lvl_block_width)
+    def getPlayerBlockPosition(self, i):
+        player = self.level.players[i]
+        x = int(player.rect.x/self.pixel_lvl_width * self.level.blockWidth)
+        y = int(player.rect.y/self.pixel_lvl_height * self.level.blockHeight)
 
-    def getTrumpBlockPositionY(self):
-        return int(self.trump.rect.y/self.pixel_lvl_height * self.lvl_block_height)
+        return x,y
 
-    def getInputs(self, trumpBlockPositionX, trumpBlockPositionY):
-        inputs = []
+    def getBestAlivePlayer(self):
+        bestPlayerIndex = 0 
+        for i, player in enumerate(self.level.players):
+            if player.position > self.level.players[bestPlayerIndex].position and player.alive:
+                bestPlayerIndex = i
         
-        leftBlockPosition = trumpBlockPositionX - 5 
-        topBlockPosition = trumpBlockPositionY - 5 
+        return bestPlayerIndex, self.level.players[bestPlayerIndex] 
+
+    def getInputs(self, playerBlockPosition):
+        inputs = []
+        playerBlockPositionX = playerBlockPosition[0]
+        playerBlockPositionY = playerBlockPosition[1]
+        
+        leftBlockPosition = playerBlockPositionX - 5 
+        topBlockPosition = playerBlockPositionY - 5 
         realpadding = 0 - topBlockPosition 
         padding = 0
         for row in range(topBlockPosition, topBlockPosition + 12):
             if row < 0:
                 inputs.extend([0] * 12)
-                padding +=  1
-            elif row > self.lvl_block_height - 1:
+                padding += 1
+            elif row > self.level.blockHeight - 1:
                 inputs.extend([0] * 12)
             
             else:
 
                 for i in range(leftBlockPosition, leftBlockPosition + 12): 
-                    if i >= self.lvl_block_width - 1 or i < 0:
+                    if i >= self.level.blockWidth - 1 or i < 0:
                         inputs.append(0)
                         continue
                     
-                    if (self.levelArray[row][i] == 'W'):
+                    if (self.level.levelArray[row][i] == 'W'):
                         inputs.append(1) 
                     else:
                         inputs.append(0)
 
-        #get hillary positions
-        for hillary in self.level.hillaries:
-            hillaryBlockX = int(hillary.rect.x/self.pixel_lvl_width * self.lvl_block_width) 
-            hillaryBlockY = int(hillary.rect.y/self.pixel_lvl_height * self.lvl_block_height) + realpadding
-            if hillaryBlockX >= leftBlockPosition and hillaryBlockX < leftBlockPosition + 12 and hillaryBlockY >= topBlockPosition and hillaryBlockY < topBlockPosition + 12: 
-                #hillary on screen...
-                inputs[hillaryBlockY*12+hillaryBlockX-leftBlockPosition] = -1
+        #get enemy positions
+        for enemy in self.level.enemies:
+            enemyBlockX = int(enemy.rect.x/self.pixel_lvl_width * self.level.blockWidth) 
+            enemyBlockY = int(enemy.rect.y/self.pixel_lvl_height * self.level.blockHeight) + realpadding
+            if enemyBlockX >= leftBlockPosition and enemyBlockX < leftBlockPosition + 12 and enemyBlockY >= topBlockPosition and enemyBlockY < topBlockPosition + 12: 
+                #There is an enemy...
+                inputs[enemyBlockY*12+enemyBlockX-leftBlockPosition] = -1
         
         return inputs
 
@@ -436,12 +422,6 @@ class Game():
                     incPos = self.neuronPositions[num]
                     pygame.draw.line(self.screen, Color('#888888'), prevPos, incPos)
         '''
-
-                
-                
-
-
-                
 
     def updateUI(self, generation, numSpecies, maxFitness, population):
         self.generation = generation
